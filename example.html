@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DB Console - Standalone Test</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; margin: 20px; background: #f9fafb; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .config { background: white; padding: 16px; border-radius: 8px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .config input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+        button { padding: 8px 16px; border: 1px solid #cbd5e1; background: white; border-radius: 6px; cursor: pointer; font-size: 14px; }
+        button.primary { background: #0f172a; color: white; border-color: #0f172a; }
+        button.primary:hover { background: #1e293b; }
+        button:hover { background: #e2e8f0; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 16px; }
+        th { background: #f1f5f9; font-weight: 500; text-align: left; padding: 12px 16px; color: #334155; border-bottom: 1px solid #e2e8f0; }
+        td { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; color: #1e293b; }
+        .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+        .toolbar select, .toolbar input { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 24px; border-radius: 12px; width: 500px; max-width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-content h3 { margin-top: 0; }
+        textarea { width: 100%; height: 200px; font-family: monospace; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+        .message { padding: 10px; border-radius: 6px; margin: 8px 0; }
+        .error { background: #fee2e2; color: #991b1b; }
+        .success { background: #dcfce7; color: #166534; }
+        .action-buttons { display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Standalone Database Tester</h2>
+
+    <div class="config">
+        <label>Server URL:</label>
+        <input type="text" id="serverUrl" value="http://127.0.0.1:12345" style="width:220px;">
+        <label>Key:</label>
+        <input type="text" id="authKey" placeholder="api key or master key" style="width:260px;">
+        <label><input type="checkbox" id="rememberKey"> Remember key</label>
+        <button class="primary" onclick="connect()">Connect & Load</button>
+    </div>
+
+    <div id="mainUI" style="display:none;">
+        <div class="toolbar">
+            <label>Class:</label>
+            <select id="classSelect" onchange="onClassSelectChange()">
+                <option value="">-- choose or type below --</option>
+            </select>
+            <input type="text" id="classname" value="GameScore" placeholder="New class" style="width:160px;">
+            <button class="primary" onclick="switchClass()">Switch</button>
+            <button class="primary" onclick="loadTable()">Refresh</button>
+            <button class="primary" onclick="openCreateModal()">+ New</button>
+        </div>
+        <div id="message" class="message"></div>
+        <table>
+            <thead><tr><th>objectId</th><th>Data</th><th>Updated</th><th>Actions</th></tr></thead>
+            <tbody id="table-body">
+                <tr><td colspan="4" style="text-align:center; padding:24px;">No data.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <h3 id="modalTitle">Edit</h3>
+            <p id="modalObjectId" style="font-family:monospace; font-size:13px; color:#64748b;"></p>
+            <textarea id="modalJson" placeholder='{ "key": "value" }'></textarea>
+            <div class="action-buttons" style="justify-content:flex-end; margin-top:16px;">
+                <button onclick="closeModal()">Cancel</button>
+                <button class="primary" id="modalSaveBtn">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const serverInput = document.getElementById('serverUrl');
+    const keyInput = document.getElementById('authKey');
+    const rememberCheck = document.getElementById('rememberKey');
+    const mainUI = document.getElementById('mainUI');
+
+    let baseUrl = '';
+    let authKey = '';
+    let isMaster = false; // determined by server? We'll just let user know, or we can detect from permissions.
+
+    // Load saved values
+    window.onload = () => {
+        const savedUrl = localStorage.getItem('dbServerUrl');
+        const savedKey = localStorage.getItem('dbAuthKey');
+        if (savedUrl) serverInput.value = savedUrl;
+        if (savedKey) {
+            keyInput.value = savedKey;
+            rememberCheck.checked = true;
+        }
+    };
+
+    function connect() {
+        baseUrl = serverInput.value.trim().replace(/\/$/, '');
+        authKey = keyInput.value.trim();
+        if (!baseUrl || !authKey) {
+            alert('Please enter server URL and key.');
+            return;
+        }
+        if (rememberCheck.checked) {
+            localStorage.setItem('dbServerUrl', baseUrl);
+            localStorage.setItem('dbAuthKey', authKey);
+        } else {
+            localStorage.removeItem('dbServerUrl');
+            localStorage.removeItem('dbAuthKey');
+        }
+        // Quick test: try to fetch tables
+        fetchTables().then(() => {
+            mainUI.style.display = 'block';
+            // Set default class and load
+            document.getElementById('classname').value = 'GameScore';
+            loadClassList();
+            loadTable();
+        }).catch(e => {
+            alert('Connection failed: ' + e.message);
+        });
+    }
+
+    function authHeaders() {
+        return { 'X-LC-Key': authKey };
+    }
+
+    async function fetchTables() {
+        const resp = await fetch(`${baseUrl}/tables`, { headers: authHeaders() });
+        if (!resp.ok) throw new Error(await resp.text());
+        return resp.json();
+    }
+
+    // UI helpers
+    function getClassName() {
+        return document.getElementById('classname').value.trim() || 'GameScore';
+    }
+
+    async function loadClassList() {
+        try {
+            const data = await fetchTables();
+            const sel = document.getElementById('classSelect');
+            sel.innerHTML = '<option value="">-- choose or type below --</option>';
+            (data.tables || []).forEach(name => {
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                sel.appendChild(opt);
+            });
+        } catch(e) {}
+    }
+
+    function onClassSelectChange() {
+        const val = document.getElementById('classSelect').value;
+        if (val) {
+            document.getElementById('classname').value = val;
+            switchClass();
+        }
+    }
+
+    function switchClass() {
+        loadClassList();
+        loadTable();
+    }
+
+    async function loadTable() {
+        const className = getClassName();
+        const tbody = document.getElementById('table-body');
+        try {
+            const resp = await fetch(`${baseUrl}/classes/${encodeURIComponent(className)}`, { headers: authHeaders() });
+            if (!resp.ok) throw new Error(await resp.text());
+            const json = await resp.json();
+            const records = json.results || [];
+            tbody.innerHTML = '';
+            if (records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:24px;">No objects found.</td></tr>';
+                showMessage(`Loaded 0 objects from "${className}".`);
+                return;
+            }
+            records.sort((a,b) => (a.updatedAt < b.updatedAt ? 1 : -1));
+            records.forEach(rec => {
+                const dataPreview = JSON.stringify(rec.data).substring(0, 100);
+                const escapedId = rec.objectId.replace(/"/g, '&quot;');
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td><code style="font-size:12px;">${escapeHtml(rec.objectId)}</code></td>
+                    <td><pre style="margin:0; font-size:12px; white-space:pre-wrap;">${escapeHtml(dataPreview)}</pre></td>
+                    <td>${escapeHtml((rec.updatedAt||'').replace('T',' ').replace('Z',''))}</td>
+                    <td class="action-buttons">
+                        <button onclick='editObject(${JSON.stringify(rec).replace(/'/g, "&apos;")})'>Edit</button>
+                        <button onclick='deleteObject("${escapedId}")'>Delete</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+            showMessage(`Loaded ${records.length} objects.`);
+        } catch(e) {
+            showMessage('Error: ' + e.message, true);
+        }
+    }
+
+    function showMessage(text, isError=false) {
+        const msg = document.getElementById('message');
+        msg.textContent = text;
+        msg.className = 'message ' + (isError ? 'error' : 'success');
+        if (!isError) setTimeout(() => msg.textContent = '', 3000);
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    // Modal
+    const modal = document.getElementById('editModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalObjId = document.getElementById('modalObjectId');
+    const modalJson = document.getElementById('modalJson');
+    let currentObjectId = null;
+
+    window.openCreateModal = function() {
+        currentObjectId = null;
+        modalTitle.textContent = 'Create Object';
+        modalObjId.textContent = '';
+        modalJson.value = '{\n  \n}';
+        document.getElementById('modalSaveBtn').textContent = 'Create';
+        modal.classList.add('active');
+    };
+
+    window.editObject = function(record) {
+        currentObjectId = record.objectId;
+        modalTitle.textContent = 'Edit Object';
+        modalObjId.textContent = 'objectId: ' + record.objectId;
+        modalJson.value = JSON.stringify(record.data, null, 2);
+        document.getElementById('modalSaveBtn').textContent = 'Save';
+        modal.classList.add('active');
+    };
+
+    window.closeModal = function() {
+        modal.classList.remove('active');
+        currentObjectId = null;
+    };
+
+    document.getElementById('modalSaveBtn').onclick = async function() {
+        const className = getClassName();
+        let data;
+        try {
+            data = JSON.parse(modalJson.value);
+        } catch(e) {
+            showMessage('Invalid JSON', true);
+            return;
+        }
+        const url = currentObjectId
+            ? `${baseUrl}/classes/${encodeURIComponent(className)}/${encodeURIComponent(currentObjectId)}`
+            : `${baseUrl}/classes/${encodeURIComponent(className)}`;
+        const method = currentObjectId ? 'PUT' : 'POST';
+        try {
+            const resp = await fetch(url, {
+                method,
+                headers: Object.assign({ 'Content-Type': 'application/json' }, authHeaders()),
+                body: JSON.stringify(data)
+            });
+            const text = await resp.text();
+            if (!resp.ok) throw new Error(JSON.parse(text).error || resp.statusText);
+            showMessage(currentObjectId ? 'Updated' : 'Created');
+            closeModal();
+            loadTable();
+            loadClassList();
+        } catch(e) {
+            showMessage('Save failed: ' + e.message, true);
+        }
+    };
+
+    window.deleteObject = async function(objectId) {
+        const className = getClassName();
+        if (!confirm(`Delete ${objectId}?`)) return;
+        try {
+            const resp = await fetch(`${baseUrl}/classes/${encodeURIComponent(className)}/${encodeURIComponent(objectId)}`, {
+                method: 'DELETE',
+                headers: authHeaders()
+            });
+            const text = await resp.text();
+            if (!resp.ok) throw new Error(JSON.parse(text).error || 'Delete failed');
+            showMessage('Deleted');
+            loadTable();
+        } catch(e) {
+            showMessage('Delete error: ' + e.message, true);
+        }
+    };
+
+    // Close modal on outside click
+    window.onclick = (e) => { if (e.target === modal) closeModal(); };
+</script>
+</body>
+</html>

@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>LeanCloud-like Console</title>
+    <script src="tailwind.js"></script>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: "Helvetica Neue", Helvetica, Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f5f7fc;
+            color: #1f2937;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; background: #f5f7fc; }
+        a { color: inherit; text-decoration: none; }
+        .app-shell {
+            display: flex;
+            flex-direction: row;
+            min-height: 100vh;
+            overflow: hidden;
+            width: 100%;
+            height: 100vh; /* 确保占据全屏高度 */
+        }
+        .sidebar {
+            min-width: 240px;
+            max-width: 240px;
+            height: 100vh;
+            flex-shrink: 0;
+            background: #111827;
+            color: #e5e7eb;
+            display: flex;
+            flex-direction: column;
+            padding: 24px 0;
+            border-right: 1px solid rgba(255,255,255,0.08);
+        }
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+            height: 100vh; /* 保证与视口同高 */
+        }
+        .content { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 24px; }
+        .sidebar .brand {
+            padding: 0 24px 24px;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+        }
+        .sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+        .sidebar nav a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            border-radius: 8px;
+            color: #d1d5db;
+            font-size: 14px;
+        }
+        .sidebar nav a.active,
+        .sidebar nav a:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .sidebar nav a span.tag { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.1); font-size: 12px; color: #cbd5e1; margin-left: auto; }
+        .sidebar .section-title { margin: 24px 24px 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.15em; color: #9ca3af; }
+
+        .topbar {
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: inset 0 -1px 0 rgba(15,23,42,0.04);
+        }
+        .topbar .title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .topbar h1 { margin: 0; font-size: 20px; font-weight: 700; color: #111827; }
+        .topbar .subtitle { font-size: 13px; color: #6b7280; }
+        .topbar .actions { display: flex; gap: 10px; align-items: center; }
+        .topbar button { border-radius: 8px; font-size: 13px; padding: 8px 14px; border: 1px solid #d1d5db; color: #111827; background: #fff; }
+        .topbar button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .topbar button.primary:hover { background: #1d4ed8; }
+        .topbar .key-badge { background: #eef2ff; color: #3730a3; padding: 6px 12px; border-radius: 999px; font-size: 12px; }
+
+        .content { flex: 1; overflow: auto; padding: 24px; }
+        .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 10px 30px rgba(15,23,42,0.04); padding: 24px; margin-bottom: 24px; }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .panel-header h2 { margin: 0; font-size: 18px; font-weight: 700; color: #111827; }
+        .panel-header p { margin: 0; color: #6b7280; font-size: 13px; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+        .toolbar label { color: #4b5563; font-size: 13px; min-width: 60px; }
+        .toolbar select, .toolbar input { min-width: 180px; padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d5db; background: #f8fafc; color: #111827; }
+        .toolbar button { border-radius: 10px; padding: 10px 16px; font-size: 13px; border: 1px solid #d1d5db; background: #fff; color: #111827; }
+        .toolbar button.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .toolbar button:hover { background: #f8fafc; }
+        .toolbar .divider { width: 1px; height: 24px; background: #e5e7eb; margin: 0 6px; }
+
+        .table-container { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; min-width: 900px; }
+        th, td { padding: 14px 16px; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f8fafc; color: #374151; font-weight: 600; text-align: left; }
+        td { color: #1f2937; vertical-align: top; }
+        tr:hover td { background: #f8fafc; }
+        .action-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+        .action-buttons button { padding: 6px 10px; border-radius: 8px; font-size: 12px; }
+        .action-buttons button:hover { background: #eef2ff; }
+
+        #message { margin: 0 0 16px; padding: 14px 16px; border-radius: 12px; font-size: 14px; }
+        .error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .success { background: #ecfdf5; color: #166534; border: 1px solid #bbf7d0; }
+        .origin-list { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
+        .origin-list span { font-family: monospace; flex: 1; color: #1f2937; }
+        .origin-panel { border-radius: 16px; border: 1px solid #e5e7eb; padding: 20px; background: #fff; }
+
+        .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.3); align-items: center; justify-content: center; z-index: 1000; }
+        .modal.active { display: flex; }
+        .modal-content { width: 520px; max-width: 90%; background: #fff; border-radius: 20px; padding: 24px; box-shadow: 0 30px 60px rgba(15,23,42,0.12); }
+        .modal-content h3 { margin: 0 0 10px; font-size: 18px; color: #111827; }
+        .modal-content textarea { width: 100%; height: 220px; font-family: monospace; padding: 12px; border: 1px solid #d1d5db; border-radius: 12px; resize: vertical; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+        .modal-actions button { border-radius: 10px; padding: 10px 16px; }
+        .access-denied { color: #b91c1c; text-align: center; margin-top: 120px; font-size: 18px; }
+        .access-denied code { background: #f3f4f6; padding: 2px 6px; border-radius: 6px; }
+    </style>
+</head>
+<body>
+<div id="main-ui" class="app-shell w-full" style="display:none;">
+    <div class="sidebar">
+        <div class="brand">LeanCloud</div>
+        <div class="section-title">管理面板</div>
+        <nav>
+            <a href="#" class="active">数据存储</a>
+            <a href="#">结构化数据 <span class="tag">Beta</span></a>
+            <a href="#">数据仓库</a>
+            <a href="#">文件</a>
+            <a href="#">LiveQuery</a>
+            <a href="#">全文搜索</a>
+        </nav>
+    </div>
+    <section class="main">
+        <header class="topbar">
+            <div class="title-group">
+                <h1>数据浏览器</h1>
+                <div class="subtitle">请通过 URL 中的 apikey 或 masterkey 登录</div>
+            </div>
+            <div class="actions">
+                <button class="primary" onclick="loadTable()">刷新</button>
+                <div class="key-badge">当前类：<span id="current-class-label">GameScore</span></div>
+            </div>
+        </header>
+        <main class="content">
+            <section id="table-panel" class="panel" style="text-align: left;">
+                <div class="panel-header">
+                    <div>
+                        <h2>表管理</h2>
+                        <p>选择一个 class 后，点击刷新以查看数据。</p>
+                    </div>
+                </div>
+                <div class="toolbar">
+                    <label for="classSelect">Class</label>
+                    <select id="classSelect" onchange="onClassSelectChange()">
+                        <option value="">-- choose or type below --</option>
+                    </select>
+                    <input type="text" id="classname" value="GameScore" placeholder="New class name">
+                    <button class="primary" onclick="switchClass()">切换</button>
+                    <button onclick="openCreateModal()">新增对象</button>
+                    <div class="divider"></div>
+                    <button onclick="importOverwrite()">导入覆盖</button>
+                    <button onclick="importAppend()">导入追加</button>
+                    <button onclick="exportJson()">导出 JSON</button>
+                    <button onclick="exportCsv()">导出 CSV</button>
+                    <input type="file" id="importFileInput" style="display:none;" accept=".json">
+                </div>
+                <div id="message"></div>
+                <div class="table-container">
+                    <table id="data-table">
+                        <thead id="table-head"></thead>
+                        <tbody id="table-body">
+                            <tr><td colspan="100" style="text-align:center; padding:24px;">No data. Choose a class and click Refresh.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="schema-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>结构化字段</h2>
+                        <p>自动识别当前类中的字段名和数据类型。</p>
+                    </div>
+                    <button class="primary" onclick="loadSchema()">刷新字段</button>
+                </div>
+                <div id="schema-content" style="min-height:120px; padding:12px; border-radius:12px; background:#fff; border:1px solid #e5e7eb;">
+                    <div>请选择类并刷新数据后，可查看字段结构。</div>
+                </div>
+            </section>
+
+            <section class="panel" id="stats-panel">
+                <div class="panel-header">
+                    <div>
+                        <h2>用量统计</h2>
+                        <p>查看当前表数量、对象总数以及接口请求使用情况。</p>
+                    </div>
+                    <button class="primary" onclick="loadStats()">刷新统计</button>
+                </div>
+                <div id="stats-cards" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-bottom:16px;">
+                    <div class="panel" style="padding:16px; background:#f8fafc; border:1px solid #e5e7eb;">
+                        <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">表数量</div>
+                        <div id="stats-table-count" style="font-size:28px; font-weight:700; color:#111827;">0</div>
+                    </div>
+                    <div class="panel" style="padding:16px; background:#f8fafc; border:1px solid #e5e7eb;">
+                        <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">对象总数</div>
+                        <div id="stats-object-count" style="font-size:28px; font-weight:700; color:#111827;">0</div>
+                    </div>
+                    <div class="panel" style="padding:16px; background:#f8fafc; border:1px solid #e5e7eb; grid-column:span 2;">
+                        <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">接口请求次数</div>
+                        <div id="stats-request-counts" style="font-size:14px; color:#111827;"></div>
+                    </div>
+                </div>
+                <div class="panel" style="padding:16px; background:#f8fafc; border:1px solid #e5e7eb;">
+                    <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">每表对象数量</div>
+                    <div id="stats-table-counts" style="font-size:14px; color:#111827;"></div>
+                </div>
+            </section>
+
+            <section class="panel origin-panel" id="origin-manager" style="display:none;">
+                <div class="panel-header">
+                    <div>
+                        <h2>Origin 白名单</h2>
+                        <p>仅在使用 Master Key 时可见。</p>
+                    </div>
+                </div>
+                <div id="origin-list"></div>
+                <div class="origin-list" style="margin-top:16px;">
+                    <input type="text" id="new-origin" placeholder="http://example.com" style="flex:1; padding:10px 12px; border: 1px solid #d1d5db; border-radius: 12px; background:#f8fafc;">
+                    <button class="primary" onclick="addOrigin()">添加</button>
+                </div>
+                <div id="origin-message" style="margin-top:8px;"></div>
+            </section>
+        </main>
+    </section>
+</div>
+<div class="access-denied" id="access-denied" style="display:none;">
+    <p>Access Denied</p>
+    <p>Please provide a valid <strong>apikey</strong> or <strong>masterkey</strong> in the URL.</p>
+    <p>Example: <code>http://127.0.0.1:12345/?apikey=your-api-key</code></p>
+</div>
+
+<!-- Edit/Create Modal -->
+<div class="modal" id="editModal">
+    <div class="modal-content">
+        <h3 id="modalTitle">Edit Object</h3>
+        <p id="modalObjectId" style="font-family:monospace; font-size:13px; color:#64748b;"></p>
+        <textarea id="modalJson" placeholder='{ "key": "value" }'></textarea>
+        <div class="modal-actions">
+            <button onclick="closeModal()">Cancel</button>
+            <button class="primary" id="modalSaveBtn">Save</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentKey = '', isMaster = false;
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('apikey')) {
+        currentKey = params.get('apikey');
+        isMaster = false;
+    } else if (params.has('masterkey')) {
+        currentKey = params.get('masterkey');
+        isMaster = true;
+    }
+    if (currentKey) document.getElementById('main-ui').style.display = 'block';
+    else document.getElementById('access-denied').style.display = 'block';
+
+    const authHeaders = () => ({ 'X-LC-Key': currentKey });
+
+    const classSelect = document.getElementById('classSelect');
+    const classInput = document.getElementById('classname');
+    const currentClassLabel = document.getElementById('current-class-label');
+    const thead = document.getElementById('table-head');
+    const tbody = document.getElementById('table-body');
+    const messageEl = document.getElementById('message');
+    const modal = document.getElementById('editModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalObjectId = document.getElementById('modalObjectId');
+    const modalJson = document.getElementById('modalJson');
+    const modalSaveBtn = document.getElementById('modalSaveBtn');
+    const importFileInput = document.getElementById('importFileInput');
+    let currentEditObjectId = null;
+    let lastRecords = [];
+
+    const getCurrentClass = () => classInput.value.trim() || 'GameScore';
+    const updateCurrentClassLabel = () => { if (currentClassLabel) currentClassLabel.textContent = getCurrentClass(); };
+
+    const navItems = Array.from(document.querySelectorAll('.sidebar nav a'));
+    let currentView = 'storage';
+
+    const showMessage = (text, isError=false) => {
+        messageEl.textContent = text;
+        messageEl.className = isError ? 'error' : 'success';
+        if (!isError) setTimeout(() => messageEl.textContent = '', 4000);
+    };
+
+    const setActiveView = (view) => {
+        currentView = view;
+        navItems.forEach(item => item.classList.toggle('active', item.dataset.view === view));
+        const title = document.querySelector('.topbar h1');
+        const subtitle = document.querySelector('.topbar .subtitle');
+        const tablePanel = document.getElementById('table-panel');
+        const schemaPanel = document.getElementById('schema-panel');
+        
+        if (view === 'structured') {
+            title.textContent = '结构化数据';
+            subtitle.textContent = '查看当前类的字段结构与对象内容。';
+            if (tablePanel) tablePanel.style.display = 'none';
+            if (schemaPanel) schemaPanel.style.display = 'block';
+            // 如果已有数据，立即显示字段结构
+            if (lastRecords.length) {
+                renderSchema(lastRecords);
+            }
+        } else {
+            title.textContent = '数据浏览器';
+            subtitle.textContent = '请通过 URL 中的 apikey 或 masterkey 登录';
+            if (tablePanel) tablePanel.style.display = 'block';
+            if (schemaPanel) schemaPanel.style.display = 'block';
+        }
+    };
+
+    const renderSchema = (records) => {
+        const schemaEl = document.getElementById('schema-content');
+        if (!schemaEl) return;
+        if (!records.length) {
+            schemaEl.innerHTML = '<div>暂无结构化字段。</div>';
+            return;
+        }
+        const fieldInfo = {};
+        records.forEach(rec => {
+            const data = rec.data || {};
+            Object.entries(data).forEach(([key, value]) => {
+                const type = Array.isArray(value) ? 'Array' : value === null ? 'Null' : typeof value;
+                fieldInfo[key] = fieldInfo[key] || new Set();
+                fieldInfo[key].add(type);
+            });
+        });
+        const rows = Object.entries(fieldInfo).sort().map(([key, types]) => {
+            return `<div style="padding:8px 0; border-bottom:1px solid #e5e7eb;"><strong>${escapeHtml(key)}</strong>：${[...types].join(', ')}</div>`;
+        });
+        schemaEl.innerHTML = rows.join('') || '<div>暂无结构化字段。</div>';
+    };
+
+    const loadSchema = async () => {
+        renderSchema(lastRecords);
+    };
+
+    // Table rendering (dynamic columns)
+    const renderTable = (records) => {
+        lastRecords = records;
+        thead.innerHTML = ''; tbody.innerHTML = '';
+        if (!records.length) {
+            tbody.innerHTML = '<tr><td colspan="100">No objects found.</td></tr>';
+            showMessage('No objects found.');
+            // 如果当前是结构化视图，同步更新
+            if (currentView === 'structured') renderSchema([]);
+            return;
+        }
+        const dataKeys = new Set();
+        records.forEach(r => { if (r.data) Object.keys(r.data).forEach(k => dataKeys.add(k)); });
+        const extraCols = Array.from(dataKeys).sort();
+        const head = `<tr><th>objectId</th><th>createdAt</th><th>updatedAt</th>${extraCols.map(c=>`<th>${escapeHtml(c)}</th>`).join('')}<th>Actions</th></tr>`;
+        thead.innerHTML = head;
+        [...records].sort((a,b)=>a.updatedAt<b.updatedAt?1:-1).forEach(rec=>{
+            const tr = document.createElement('tr');
+            let acts = `<button onclick='editObject(${JSON.stringify(rec).replace(/'/g,"&apos;")})'>Edit</button>`;
+            if (isMaster) acts += `<button onclick='deleteObject("${escapeHtml(rec.objectId)}")'>Delete</button>`;
+            tr.innerHTML = `
+                <td><code style="font-size:12px;">${escapeHtml(rec.objectId)}</code></td>
+                <td>${escapeHtml((rec.createdAt||'').replace('T',' ').replace('Z',''))}</td>
+                <td>${escapeHtml((rec.updatedAt||'').replace('T',' ').replace('Z',''))}</td>
+                ${extraCols.map(col=>{let val=rec.data&&rec.data[col]!==undefined?rec.data[col]:''; if(typeof val==='object') val=JSON.stringify(val); return `<td>${escapeHtml(String(val))}</td>`;}).join('')}
+                <td class="action-buttons">${acts}</td>`;
+            tbody.appendChild(tr);
+        });
+        showMessage(`Loaded ${records.length} objects.`);
+        // 如果当前是结构化视图，自动刷新字段面板
+        if (currentView === 'structured') {
+            renderSchema(records);
+        }
+    };
+
+    const escapeHtml = (text) => { const d=document.createElement('div'); d.textContent=text; return d.innerHTML; };
+
+    const initNav = () => {
+        navItems.forEach(item => {
+            const text = item.textContent || '';
+            if (text.includes('结构化数据')) item.dataset.view = 'structured';
+            else if (text.includes('数据存储')) item.dataset.view = 'storage';
+            item.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (item.dataset.view) {
+                    setActiveView(item.dataset.view);
+                }
+            });
+        });
+    };
+
+    const loadClassList = async () => {
+        try {
+            const resp = await fetch('/tables', {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            const json = await resp.json();
+            const tables = json.tables || [];
+            classSelect.innerHTML = '<option value="">-- choose or type below --</option>';
+            tables.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                classSelect.appendChild(option);
+            });
+        } catch (e) { console.error(e); }
+    };
+
+    const loadTable = async () => {
+        try {
+            const resp = await fetch(`/classes/${encodeURIComponent(getCurrentClass())}`, {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            renderTable((await resp.json()).results||[]);
+        } catch(e) { showMessage('Load failed: '+e.message, true); }
+    };
+
+    const switchClass = () => {
+        const newClass = classInput.value.trim();
+        if (!newClass) return;
+        const url = new URL(window.location);
+        url.searchParams.set('class', newClass);
+        history.replaceState({}, '', url);
+        updateCurrentClassLabel();
+        loadTable();
+        loadClassList();
+    };
+
+    const onClassSelectChange = () => {
+        const val = classSelect.value;
+        if (val) { classInput.value = val; switchClass(); }
+    };
+
+    window.openCreateModal = () => {
+        currentEditObjectId = null;
+        modalTitle.textContent = 'Create New Object';
+        modalObjectId.textContent = '';
+        modalJson.value = '{\n  \n}';
+        modalSaveBtn.textContent = 'Create';
+        modal.classList.add('active');
+    };
+
+    window.editObject = (rec) => {
+        currentEditObjectId = rec.objectId;
+        modalTitle.textContent = 'Edit Object';
+        modalObjectId.textContent = 'objectId: ' + rec.objectId;
+        modalJson.value = JSON.stringify(rec.data || {}, null, 2);
+        modalSaveBtn.textContent = 'Save Changes';
+        modal.classList.add('active');
+    };
+
+    window.closeModal = () => { modal.classList.remove('active'); currentEditObjectId = null; };
+
+    const saveModal = async () => {
+        const className = getCurrentClass();
+        let data;
+        try { data = JSON.parse(modalJson.value); } catch(e) { showMessage('Invalid JSON', true); return; }
+        const url = currentEditObjectId 
+            ? `/classes/${encodeURIComponent(className)}/${encodeURIComponent(currentEditObjectId)}`
+            : `/classes/${encodeURIComponent(className)}`;
+        const method = currentEditObjectId ? 'PUT' : 'POST';
+        try {
+            const resp = await fetch(url, {
+                method,
+                headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+                body: JSON.stringify(data)
+            });
+            const text = await resp.text();
+            if (!resp.ok) throw new Error(JSON.parse(text).error || resp.statusText);
+            showMessage(currentEditObjectId ? 'Updated' : 'Created');
+            closeModal();
+            loadTable();
+            loadClassList();
+        } catch(e) { showMessage('Save failed: '+e.message, true); }
+    };
+
+    window.deleteObject = async (id) => {
+        if (!isMaster) { showMessage('Master key required for deletion', true); return; }
+        if (!confirm(`Delete ${id}?`)) return;
+        try {
+            const resp = await fetch(`/classes/${encodeURIComponent(getCurrentClass())}/${encodeURIComponent(id)}`, {
+                method: 'DELETE', headers: authHeaders()
+            });
+            const text = await resp.text();
+            if (resp.status === 403) { showMessage('Deletion requires Master Key (403)', true); return; }
+            if (!resp.ok) throw new Error(JSON.parse(text).error || resp.statusText);
+            showMessage('Deleted'); loadTable();
+        } catch(e) { showMessage('Delete failed: '+e.message, true); }
+    };
+
+    // Import / Export
+    let importMode = '';
+    const readFile = (file) => new Promise((resolve,reject) => {
+        const reader = new FileReader();
+        reader.onload = e => { try { resolve(JSON.parse(e.target.result)); } catch(err) { reject(new Error('Invalid JSON')); } };
+        reader.onerror = () => reject(new Error('Read error'));
+        reader.readAsText(file);
+    });
+
+    window.importOverwrite = () => { importMode = 'overwrite'; importFileInput.click(); };
+    window.importAppend = () => { importMode = 'append'; importFileInput.click(); };
+
+    importFileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const data = await readFile(file);
+            if (!Array.isArray(data)) throw new Error('JSON must be array of objects');
+            const className = getCurrentClass();
+            if (importMode === 'overwrite') {
+                const res = await fetch(`/classes/${encodeURIComponent(className)}`, {headers:authHeaders()});
+                if (!res.ok) throw new Error('Failed to fetch current records');
+                const list = (await res.json()).results || [];
+                for (const rec of list) {
+                    const del = await fetch(`/classes/${encodeURIComponent(className)}/${encodeURIComponent(rec.objectId)}`, {method:'DELETE', headers:authHeaders()});
+                    if (del.status === 403) {
+                        showMessage('Import Overwrite failed: Master Key required (403).', true);
+                        importFileInput.value = ''; return;
+                    }
+                    if (!del.ok) throw new Error('Delete failed: ' + (await del.text()));
+                }
+            }
+            let count = 0;
+            for (const item of data) {
+                const resp = await fetch(`/classes/${encodeURIComponent(className)}`, {
+                    method: 'POST',
+                    headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+                    body: JSON.stringify(item)
+                });
+                if (resp.ok) count++;
+            }
+            showMessage(`Imported ${count} object(s) (${importMode}).`);
+            loadTable();
+            loadClassList();
+        } catch (err) { showMessage('Import error: '+err.message, true); }
+        finally { importFileInput.value = ''; }
+    };
+
+    const recordsToCsv = (records) => {
+        const dataKeys = new Set();
+        records.forEach(r => {
+            if (r.data && typeof r.data === 'object' && !Array.isArray(r.data)) {
+                Object.keys(r.data).forEach(k => dataKeys.add(k));
+            }
+        });
+        const columns = ['objectId', 'createdAt', 'updatedAt', ...Array.from(dataKeys).sort()];
+        const escapeCsv = (value) => {
+            if (value === null || value === undefined) return '';
+            let text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+            text = text.replace(/"/g, '""');
+            return /[",\r\n]/.test(text) ? `"${text}"` : text;
+        };
+        const rows = [columns.join(',')];
+        records.forEach(r => {
+            const row = columns.map(col => {
+                if (col === 'objectId') return escapeCsv(r.objectId);
+                if (col === 'createdAt') return escapeCsv(r.createdAt);
+                if (col === 'updatedAt') return escapeCsv(r.updatedAt);
+                const value = r.data && r.data[col] !== undefined ? r.data[col] : '';
+                return escapeCsv(value);
+            });
+            rows.push(row.join(','));
+        });
+        return rows.join('\r\n');
+    };
+
+    window.exportJson = async () => {
+        try {
+            const resp = await fetch(`/classes/${encodeURIComponent(getCurrentClass())}`, {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            const json = await resp.json();
+            const blob = new Blob([JSON.stringify(json.results || [], null, 2)], {type:'application/json'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${getCurrentClass()}.json`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showMessage('Exported.');
+        } catch(e) { showMessage('Export failed: '+e.message, true); }
+    };
+
+    window.exportCsv = async () => {
+        try {
+            const resp = await fetch(`/classes/${encodeURIComponent(getCurrentClass())}`, {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            const json = await resp.json();
+            const records = json.results || [];
+            const csv = recordsToCsv(records);
+            const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${getCurrentClass()}.csv`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+            showMessage('CSV exported.');
+        } catch(e) { showMessage('CSV export failed: '+e.message, true); }
+    };
+
+    // Origin management
+    const originContainer = document.getElementById('origin-manager');
+    const originListDiv = document.getElementById('origin-list');
+    const newOriginInput = document.getElementById('new-origin');
+    const originMsg = document.getElementById('origin-message');
+
+    const loadOrigins = async () => {
+        if (!isMaster) return;
+        originContainer.style.display = 'block';
+        try {
+            const resp = await fetch('/origins', {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            const origins = await resp.json();
+            originListDiv.innerHTML = '';
+            origins.forEach(orig => {
+                const div = document.createElement('div');
+                div.className = 'origin-list';
+                div.innerHTML = `<span>${orig}</span><button onclick="deleteOrigin('${orig}')">Delete</button>`;
+                originListDiv.appendChild(div);
+            });
+        } catch(e) { originMsg.innerHTML = `<div class="error">${e.message}</div>`; }
+    };
+
+    const renderStats = (data) => {
+        document.getElementById('stats-table-count').textContent = data.tableCount || 0;
+        document.getElementById('stats-object-count').textContent = data.objectCount || 0;
+        const requestCounts = document.getElementById('stats-request-counts');
+        const tableCounts = document.getElementById('stats-table-counts');
+        if (requestCounts && tableCounts) {
+            requestCounts.innerHTML = Object.entries(data.requestCounts || {}).map(([k,v]) => `<div>${k}: <strong>${v}</strong></div>`).join('');
+            const tableHtml = Object.entries(data.countsByTable || {}).map(([t,c]) => `<div>${t}: <strong>${c}</strong></div>`).join('');
+            tableCounts.innerHTML = tableHtml || '<div>No tables found.</div>';
+        }
+    };
+
+    window.loadStats = async () => {
+        try {
+            const resp = await fetch('/stats', {headers:authHeaders()});
+            if (!resp.ok) throw new Error(await resp.text());
+            const json = await resp.json();
+            renderStats(json);
+        } catch (e) {
+            showMessage('Statistics load failed: ' + e.message, true);
+        }
+    };
+
+    window.addOrigin = async () => {
+        const origin = newOriginInput.value.trim();
+        if (!origin) return;
+        try {
+            const resp = await fetch('/origins', {
+                method: 'POST',
+                headers: Object.assign({'Content-Type':'application/json'}, authHeaders()),
+                body: JSON.stringify({origin})
+            });
+            const text = await resp.text();
+            if (resp.ok) {
+                newOriginInput.value = '';
+                loadOrigins();
+                originMsg.innerHTML = '<div class="success">Added successfully</div>';
+            } else {
+                originMsg.innerHTML = `<div class="error">Error (${resp.status}): ${text}</div>`;
+            }
+        } catch(e) { originMsg.innerHTML = `<div class="error">${e.message}</div>`; }
+    };
+
+    window.deleteOrigin = async (origin) => {
+        if (!confirm(`Delete ${origin}?`)) return;
+        try {
+            const resp = await fetch(`/origins?origin=${encodeURIComponent(origin)}`, {
+                method: 'DELETE', headers: authHeaders()
+            });
+            if (resp.ok) {
+                loadOrigins();
+                originMsg.innerHTML = '<div class="success">Deleted</div>';
+            } else {
+                const text = await resp.text();
+                originMsg.innerHTML = `<div class="error">Error (${resp.status}): ${text}</div>`;
+            }
+        } catch(e) { originMsg.innerHTML = `<div class="error">${e.message}</div>`; }
+    };
+
+    window.addEventListener('load', () => {
+        if (!currentKey) return;
+        initNav();
+        const initialClass = params.get('class') || 'GameScore';
+        classInput.value = initialClass;
+        const initialView = params.get('view') || 'storage';
+        setActiveView(initialView);
+        updateCurrentClassLabel();
+        loadClassList();
+        loadTable();
+        loadOrigins();
+        loadStats();
+    });
+
+    modalSaveBtn.onclick = saveModal;
+    window.onclick = (e) => { if (e.target === modal) closeModal(); };
+</script>
+</body>
+</html>
